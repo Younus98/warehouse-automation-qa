@@ -1,0 +1,8 @@
+{
+  "asnType": "Receipt",
+  "owner": "DEMO",
+  "transportUnit": { "tuId": "PAL-0001", "tuType": "EURO", "weight": 420.0 },
+  "asnLine": [
+    { "lineNumber": 1, "productId": "SKU-100", "quantityExpected": 60 }
+  ]
+}

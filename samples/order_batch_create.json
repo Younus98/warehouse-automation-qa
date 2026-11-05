@@ -1,0 +1,15 @@
+{
+  "order": [
+    {
+      "orderId": "ORD-1001",
+      "owner": "DEMO",
+      "orderType": "NORMAL",
+      "priority": 5,
+      "shortAllocationAllowed": false,
+      "orderRelease": false,
+      "orderLine": [
+        { "orderLineNumber": 1, "productId": "SKU-100", "quantityOrdered": 24 }
+      ]
+    }
+  ]
+}
