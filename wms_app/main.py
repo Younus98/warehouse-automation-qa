@@ -23,6 +23,7 @@ products: dict[str, dict] = {}  # key: SKU
 orders: dict[str, dict] = {}    # key: order number
 transport_units: dict[str, dict] = {}  # key: TU id (pallet / tote barcode)
 inventory_transactions: list[dict] = []  # append-only audit trail
+asns: dict[str, dict] = {}  # key: ASN number
 
 
 # ---------------------------------------------------------------------------
@@ -144,10 +145,11 @@ def get_stock(sku: str):
 # ---------------------------------------------------------------------------
 # Host interface > Order  (XML in, XML out - like a SoapUI request)
 # ---------------------------------------------------------------------------
-def xml_ack(status: str, order_number: str, message: str, http_status: int) -> Response:
+def xml_ack(status: str, number: str, message: str, http_status: int,
+            root_tag: str = "OrderAck", number_tag: str = "OrderNumber") -> Response:
     """Build the XML acknowledgement the WMS sends back to the host."""
-    ack = etree.Element("OrderAck")
-    etree.SubElement(ack, "OrderNumber").text = order_number
+    ack = etree.Element(root_tag)
+    etree.SubElement(ack, number_tag).text = number
     etree.SubElement(ack, "Status").text = status
     etree.SubElement(ack, "Message").text = message
     body = etree.tostring(ack, xml_declaration=True, encoding="UTF-8", pretty_print=True)
@@ -197,6 +199,101 @@ async def receive_order(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Receiving > Advance Shipping Notice (ASN)
+#   1. The supplier announces a delivery with an XML ASN (host interface).
+#   2. When pallets arrive, the receiving clerk books them against the ASN.
+#   3. The WMS checks each pallet against what was announced.
+# ---------------------------------------------------------------------------
+def asn_ack(status: str, asn_number: str, message: str, http_status: int) -> Response:
+    return xml_ack(status, asn_number, message, http_status,
+                   root_tag="AsnAck", number_tag="AsnNumber")
+
+
+@app.post("/interface/asn")
+async def receive_asn(request: Request):
+    try:
+        root = etree.fromstring(await request.body())
+    except etree.XMLSyntaxError:
+        return asn_ack("REJECTED", "", "Malformed XML", 400)
+
+    asn_number = root.findtext("AsnNumber", default="").strip()
+    supplier = root.findtext("Supplier", default="").strip()
+    if not asn_number or not supplier:
+        return asn_ack("REJECTED", asn_number, "AsnNumber and Supplier are required", 400)
+    if asn_number in asns:
+        return asn_ack("REJECTED", asn_number, "Duplicate ASN number", 409)
+
+    lines = {}
+    for line in root.xpath("./Lines/Line"):
+        sku = line.findtext("Sku", default="").strip()
+        qty_text = line.findtext("ExpectedQuantity", default="").strip()
+        if sku not in products:
+            return asn_ack("REJECTED", asn_number, f"Unknown product {sku}", 422)
+        if not qty_text.isdigit() or int(qty_text) <= 0:
+            return asn_ack("REJECTED", asn_number, f"Invalid expected quantity for {sku}", 422)
+        if sku in lines:
+            return asn_ack("REJECTED", asn_number, f"Product {sku} appears twice", 422)
+        lines[sku] = {"sku": sku, "expected": int(qty_text), "received": 0}
+
+    if not lines:
+        return asn_ack("REJECTED", asn_number, "ASN has no lines", 422)
+
+    asns[asn_number] = {
+        "asn_number": asn_number,
+        "supplier": supplier,
+        "status": "ANNOUNCED",
+        "lines": list(lines.values()),
+    }
+    return asn_ack("ACCEPTED", asn_number, "ASN received", 201)
+
+
+@app.get("/api/asns/{asn_number}")
+def get_asn(asn_number: str):
+    if asn_number not in asns:
+        raise HTTPException(status_code=404, detail=f"ASN {asn_number} not found")
+    return asns[asn_number]
+
+
+class ReceiptIn(BaseModel):
+    tu_id: str = Field(min_length=1, max_length=20)
+    tu_type: str
+    location: str = Field(min_length=1, max_length=20)
+    sku: str
+    quantity: int = Field(gt=0)
+
+
+@app.post("/api/asns/{asn_number}/receive", status_code=201)
+def receive_against_asn(asn_number: str, receipt: ReceiptIn):
+    """Book one arriving pallet/tote against an ASN."""
+    if asn_number not in asns:
+        raise HTTPException(status_code=404, detail=f"ASN {asn_number} not found")
+    asn = asns[asn_number]
+    if asn["status"] == "RECEIVED":
+        raise HTTPException(status_code=409, detail=f"ASN {asn_number} is already fully received")
+
+    line = next((l for l in asn["lines"] if l["sku"] == receipt.sku), None)
+    if line is None:
+        raise HTTPException(status_code=422, detail=f"Product {receipt.sku} is not on ASN {asn_number}")
+    remaining = line["expected"] - line["received"]
+    if receipt.quantity > remaining:
+        raise HTTPException(status_code=422,
+                            detail=f"Over-delivery: {receipt.quantity} received, only {remaining} still expected")
+
+    # Create the transport unit, then put the stock on it (books a RECEIPT)
+    create_transport_unit(TransportUnitIn(tu_id=receipt.tu_id, tu_type=receipt.tu_type,
+                                          location=receipt.location))
+    load_unit = add_load_unit(receipt.tu_id, LoadUnitIn(sku=receipt.sku, quantity=receipt.quantity))
+    inventory_transactions[-1]["reference"] = asn_number
+
+    # Update the ASN status
+    line["received"] += receipt.quantity
+    all_done = all(l["received"] == l["expected"] for l in asn["lines"])
+    asn["status"] = "RECEIVED" if all_done else "PARTIALLY_RECEIVED"
+
+    return {"asn_status": asn["status"], "load_unit": load_unit}
+
+
+# ---------------------------------------------------------------------------
 # Orders  (JSON view, like the Orders screen)
 # ---------------------------------------------------------------------------
 @app.get("/api/orders/{order_number}")
@@ -215,3 +312,4 @@ def reset():
     orders.clear()
     transport_units.clear()
     inventory_transactions.clear()
+    asns.clear()
