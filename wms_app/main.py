@@ -21,6 +21,8 @@ app = FastAPI(title="Mini WMS", version="0.1.0")
 # ---------------------------------------------------------------------------
 products: dict[str, dict] = {}  # key: SKU
 orders: dict[str, dict] = {}    # key: order number
+transport_units: dict[str, dict] = {}  # key: TU id (pallet / tote barcode)
+inventory_transactions: list[dict] = []  # append-only audit trail
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +52,93 @@ def get_product(sku: str):
     if sku not in products:
         raise HTTPException(status_code=404, detail=f"Product {sku} not found")
     return products[sku]
+
+
+# ---------------------------------------------------------------------------
+# Warehouse Management > Inventory
+#   Transport Unit (TU) = the physical carrier: a pallet or a tote
+#   Load Unit (LU)      = the stock inside a TU: one product + a quantity
+#   Inventory Transaction = an audit-trail entry for every stock change
+# ---------------------------------------------------------------------------
+TU_TYPES = {"PALLET", "TOTE"}
+
+
+class TransportUnitIn(BaseModel):
+    tu_id: str = Field(min_length=1, max_length=20)
+    tu_type: str
+    location: str = Field(min_length=1, max_length=20)
+
+
+class LoadUnitIn(BaseModel):
+    sku: str
+    quantity: int = Field(gt=0)
+
+
+def book_transaction(tx_type: str, sku: str, quantity: int, tu_id: str, reference: str = "") -> dict:
+    """Record a stock movement. RECEIPT adds stock, PICK removes it."""
+    tx = {
+        "tx_id": len(inventory_transactions) + 1,
+        "type": tx_type,
+        "sku": sku,
+        "quantity": quantity,
+        "tu_id": tu_id,
+        "reference": reference,
+    }
+    inventory_transactions.append(tx)
+    return tx
+
+
+@app.post("/api/transport-units", status_code=201)
+def create_transport_unit(tu: TransportUnitIn):
+    if tu.tu_type not in TU_TYPES:
+        raise HTTPException(status_code=422, detail=f"tu_type must be one of {sorted(TU_TYPES)}")
+    if tu.tu_id in transport_units:
+        raise HTTPException(status_code=409, detail=f"Transport unit {tu.tu_id} already exists")
+    transport_units[tu.tu_id] = {**tu.model_dump(), "load_units": []}
+    return transport_units[tu.tu_id]
+
+
+@app.get("/api/transport-units/{tu_id}")
+def get_transport_unit(tu_id: str):
+    if tu_id not in transport_units:
+        raise HTTPException(status_code=404, detail=f"Transport unit {tu_id} not found")
+    return transport_units[tu_id]
+
+
+@app.post("/api/transport-units/{tu_id}/load-units", status_code=201)
+def add_load_unit(tu_id: str, lu: LoadUnitIn):
+    """Put stock onto a transport unit - this is a goods receipt."""
+    if tu_id not in transport_units:
+        raise HTTPException(status_code=404, detail=f"Transport unit {tu_id} not found")
+    if lu.sku not in products:
+        raise HTTPException(status_code=422, detail=f"Unknown product {lu.sku}")
+
+    tu = transport_units[tu_id]
+    load_unit = {"lu_id": f"{tu_id}-LU{len(tu['load_units']) + 1}", **lu.model_dump()}
+    tu["load_units"].append(load_unit)
+    book_transaction("RECEIPT", lu.sku, lu.quantity, tu_id)
+    return load_unit
+
+
+@app.get("/api/inventory-transactions")
+def list_inventory_transactions(sku: str | None = None):
+    if sku:
+        return [tx for tx in inventory_transactions if tx["sku"] == sku]
+    return inventory_transactions
+
+
+@app.get("/api/stock/{sku}")
+def get_stock(sku: str):
+    """Total quantity of a product across all transport units."""
+    if sku not in products:
+        raise HTTPException(status_code=404, detail=f"Product {sku} not found")
+    total = sum(
+        lu["quantity"]
+        for tu in transport_units.values()
+        for lu in tu["load_units"]
+        if lu["sku"] == sku
+    )
+    return {"sku": sku, "quantity": total}
 
 
 # ---------------------------------------------------------------------------
@@ -124,3 +213,5 @@ def get_order(order_number: str):
 def reset():
     products.clear()
     orders.clear()
+    transport_units.clear()
+    inventory_transactions.clear()
