@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Order>
+  <OrderNumber>ORD-1001</OrderNumber>
+  <Customer>Retail Store North</Customer>
+  <Lines>
+    <Line>
+      <Sku>SKU-100</Sku>
+      <Quantity>5</Quantity>
+    </Line>
+  </Lines>
+</Order>
