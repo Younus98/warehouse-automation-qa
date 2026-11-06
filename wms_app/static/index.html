@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini WMS</title>
+<style>
+  :root { --bg:#f4f5f7; --panel:#fff; --ink:#1d2430; --muted:#667085; --line:#e3e6eb;
+          --accent:#1f5fbf; --ok:#1e7a46; --bad:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#16202e; color:#fff; padding:12px 20px; display:flex; gap:24px; align-items:center; }
+  header h1 { font-size:16px; margin:0; }
+  nav button { background:none; border:0; color:#c9d1dc; font:inherit; padding:6px 10px; cursor:pointer; border-radius:4px; }
+  nav button[aria-selected="true"] { background:#2c3a4f; color:#fff; }
+  main { max-width:1000px; margin:20px auto; padding:0 16px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px; margin-bottom:16px; }
+  h2 { font-size:15px; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .empty { color:var(--muted); }
+  form { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:3px; }
+  input, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:4px; }
+  button.action { background:var(--accent); color:#fff; border:0; border-radius:4px; padding:7px 12px; font:inherit; cursor:pointer; }
+  #message { padding:10px 14px; border-radius:6px; margin-bottom:16px; display:none; }
+  #message.ok { display:block; background:#e7f5ec; color:var(--ok); }
+  #message.error { display:block; background:#fdecea; color:var(--bad); }
+  .status { font-weight:600; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mini WMS</h1>
+  <nav>
+    <button data-tab="inventory" aria-selected="true" data-testid="tab-inventory">Inventory</button>
+    <button data-tab="receiving" data-testid="tab-receiving">Receiving</button>
+    <button data-tab="orders" data-testid="tab-orders">Orders</button>
+    <button data-tab="tasks" data-testid="tab-tasks">Tasks</button>
+  </nav>
+</header>
+
+<main>
+  <div id="message" data-testid="message" role="status"></div>
+
+  <div id="inventory" class="tab">
+    <section>
+      <h2>Stock</h2>
+      <table data-testid="stock-table">
+        <thead><tr><th>Product</th><th>On hand</th><th>Allocated</th><th>Available</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Transport units</h2>
+      <table data-testid="tu-table">
+        <thead><tr><th>TU</th><th>Type</th><th>Location</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <div id="receiving" class="tab hidden">
+    <section>
+      <h2>Infeed scan</h2>
+      <form id="infeed-form" data-testid="infeed-form">
+        <label>TU id <input name="tuId" data-testid="infeed-tu" required></label>
+        <label>TU type
+          <select name="tuType" data-testid="infeed-type">
+            <option>EURO</option><option>INDU</option><option>TOTE</option>
+          </select>
+        </label>
+        <label>Weight (kg) <input name="weight" type="number" step="0.1" data-testid="infeed-weight" required></label>
+        <button class="action" data-testid="infeed-submit">Scan pallet</button>
+      </form>
+    </section>
+  </div>
+
+  <div id="orders" class="tab hidden">
+    <section>
+      <h2>Order planner</h2>
+      <table data-testid="orders-table">
+        <thead><tr><th>Order</th><th>Priority</th><th>Lines</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <div id="tasks" class="tab hidden">
+    <section>
+      <h2>Open tasks</h2>
+      <table data-testid="tasks-table">
+        <thead><tr><th>Task</th><th>Type</th><th>TU</th><th>Product</th><th>Qty</th><th>Reference</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+
+function showMessage(text, kind) {
+  const box = $("#message");
+  box.textContent = text;
+  box.className = kind;
+}
+
+async function call(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Request failed");
+  return data;
+}
+
+function fillTable(testId, rows, emptyText) {
+  const body = document.querySelector(`[data-testid="${testId}"] tbody`);
+  const cols = body.parentElement.querySelectorAll("th").length;
+  body.innerHTML = rows.length ? rows.join("") :
+    `<tr><td colspan="${cols}" class="empty">${emptyText}</td></tr>`;
+}
+
+async function refresh() {
+  const [stock, tus, orders, tasks] = await Promise.all([
+    call("GET", "/api/stock"), call("GET", "/api/transport-units"),
+    call("GET", "/api/orders"), call("GET", "/api/tasks?status=OPEN"),
+  ]);
+
+  fillTable("stock-table", stock.map(s =>
+    `<tr data-testid="stock-row-${s.productId}"><td>${s.productId}</td>
+      <td data-testid="on-hand">${s.onHand}</td><td data-testid="allocated">${s.allocated}</td>
+      <td data-testid="available">${s.available}</td></tr>`), "No products");
+
+  fillTable("tu-table", tus.map(t =>
+    `<tr data-testid="tu-row-${t.tuId}"><td>${t.tuId}</td><td>${t.tuType}</td>
+      <td data-testid="location">${t.location}</td><td class="status" data-testid="tu-status">${t.status}</td></tr>`),
+    "No transport units");
+
+  fillTable("orders-table", orders.map(o =>
+    `<tr data-testid="order-row-${o.orderId}"><td>${o.orderId}</td><td>${o.priority}</td>
+      <td>${o.orderLine.map(l => `${l.productId} × ${l.quantityOrdered}`).join(", ")}</td>
+      <td class="status" data-testid="order-status">${o.status}</td>
+      <td>${o.status === "NEW" ? `<button class="action" data-testid="release-${o.orderId}"
+            onclick="releaseOrder('${o.orderId}')">Release</button>` : ""}</td></tr>`), "No orders");
+
+  fillTable("tasks-table", tasks.map(t =>
+    `<tr data-testid="task-row-${t.taskId}"><td>${t.taskId}</td><td>${t.type}</td><td>${t.tuId}</td>
+      <td>${t.productId ?? "-"}</td><td>${t.quantity || "-"}</td><td>${t.reference}</td>
+      <td><button class="action" data-testid="complete-${t.taskId}"
+            onclick="completeTask(${t.taskId})">Complete</button></td></tr>`), "No open tasks");
+}
+
+async function releaseOrder(orderId) {
+  try {
+    await call("POST", `/api/orders/${orderId}/release`);
+    showMessage(`Order ${orderId} released`, "ok");
+  } catch (err) { showMessage(err.message, "error"); }
+  refresh();
+}
+
+async function completeTask(taskId) {
+  try {
+    await call("POST", `/api/tasks/${taskId}/complete`);
+    showMessage(`Task ${taskId} completed`, "ok");
+  } catch (err) { showMessage(err.message, "error"); }
+  refresh();
+}
+
+$("#infeed-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  try {
+    const result = await call("POST", "/api/receiving/infeed", {
+      tuId: form.get("tuId"), tuType: form.get("tuType"), weight: Number(form.get("weight")),
+    });
+    if (result.result === "OK") showMessage(`Pallet ${form.get("tuId")} OK - stored at ${result.location}`, "ok");
+    else showMessage(`Pallet ${form.get("tuId")} NIO: ${result.reasons.join("; ")}`, "error");
+    event.target.reset();
+  } catch (err) { showMessage(err.message, "error"); }
+  refresh();
+});
+
+document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", b === button));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("hidden", t.id !== button.dataset.tab));
+  refresh();
+}));
+
+refresh();
+</script>
+</body>
+</html>

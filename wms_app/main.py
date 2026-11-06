@@ -18,7 +18,10 @@ Business flow:
 All data lives in memory, so every restart starts with an empty warehouse.
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Mini WMS", version="0.2.0")
@@ -442,6 +445,29 @@ def complete_task(task_id: int):
         transport_orders[int(task["reference"].removeprefix("TO-"))]["status"] = "DONE"
 
     return task
+
+
+# ---------------------------------------------------------------------------
+# Lists for the screen + the screen itself
+# ---------------------------------------------------------------------------
+@app.get("/api/transport-units")
+def list_transport_units():
+    return list(transport_units.values())
+
+
+@app.get("/api/orders")
+def list_orders():
+    return list(orders.values())
+
+
+@app.get("/api/stock")
+def list_stock():
+    return [get_stock(product_id) for product_id in products]
+
+
+@app.get("/", include_in_schema=False)
+def screen():
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
 # ---------------------------------------------------------------------------
