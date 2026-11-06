@@ -30,8 +30,15 @@ jobs:
           python -m playwright install --with-deps chromium
 
       # Quality gate 1: if the most important checks fail, stop here.
+      # Writes its own report, so a red gate still leaves evidence behind.
       - name: Smoke tests
-        run: pytest -m smoke
+        run: >
+          pytest -m smoke
+          --html=reports/smoke-report.html --self-contained-html
+          --junitxml=reports/smoke-junit.xml
+          --screenshot only-on-failure
+          --tracing retain-on-failure
+          --output test-results
 
       # Quality gate 2: everything, with reports.
       - name: Full regression
@@ -45,7 +52,18 @@ jobs:
 
       - name: Write summary to the run page
         if: always()
-        run: python tools/junit_summary.py reports/junit.xml >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            if [ -f reports/junit.xml ]; then
+              python tools/junit_summary.py reports/junit.xml
+            elif [ -f reports/smoke-junit.xml ]; then
+              echo "> ⚠️ **Smoke gate failed - full regression did not run.** Other failures may be hidden."
+              echo
+              python tools/junit_summary.py reports/smoke-junit.xml
+            else
+              echo "## ❌ No test results - the tests did not start. Check the install step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
         if: always()
