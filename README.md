@@ -6,6 +6,8 @@ QA automation framework for a warehouse management system: API, UI, end-to-end f
 
 > Full documentation follows in a later step.
 
+**QA agents:** four Claude Code agents in `.claude/agents/` - see [real example runs](docs/agent-examples/README.md).
+
 ## Run the tests
 
 ```bash
