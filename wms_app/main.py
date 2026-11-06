@@ -316,9 +316,9 @@ def list_inventory_transactions(productId: str | None = None):
 
 
 def on_hand(product_id: str) -> float:
-    """Physical stock on AVAILABLE pallets (blocked NiO pallets don't count)."""
+    """Physical stock on all pallets in the warehouse."""
     return sum(lu["quantity"]
-               for tu in transport_units.values() if tu["status"] == "AVAILABLE"
+               for tu in transport_units.values()
                for lu in tu["loadUnits"] if lu["productId"] == product_id)
 
 
