@@ -9,7 +9,7 @@ def test_create_product(wms):
     response = wms.create_product(builders.product("SKU-200"))
 
     assert response.status_code == 201
-    assert response.json() == {"status": "ACCEPTED", "productId": "SKU-200"}
+    assert response.json() == {"status": "CREATED", "productId": "SKU-200"}
 
 
 @pytest.mark.negative
