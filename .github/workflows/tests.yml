@@ -1,0 +1,63 @@
+# Runs the whole test suite on every push and pull request to main.
+# Results: a summary on the run page + an HTML report to download.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:        # adds a "Run workflow" button on GitHub
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      # Quality gate 1: if the most important checks fail, stop here.
+      - name: Smoke tests
+        run: pytest -m smoke
+
+      # Quality gate 2: everything, with reports.
+      - name: Full regression
+        run: >
+          pytest
+          --html=reports/report.html --self-contained-html
+          --junitxml=reports/junit.xml
+          --screenshot only-on-failure
+          --tracing retain-on-failure
+          --output test-results
+
+      - name: Write summary to the run page
+        if: always()
+        run: python tools/junit_summary.py reports/junit.xml >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: reports/
+
+      - name: Upload screenshots and traces of failed UI tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-failure-evidence
+          path: test-results/
+          if-no-files-found: ignore
