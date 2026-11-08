@@ -59,5 +59,8 @@ class WmsClient:
     def complete_task(self, task_id):
         return self.http.post(f"/api/tasks/{task_id}/complete")
 
+    def load_demo_data(self):
+        return self.http.post("/api/test/demo-data")
+
     def reset(self):
         return self.http.post("/api/test/reset")

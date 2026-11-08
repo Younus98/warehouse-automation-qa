@@ -12,7 +12,7 @@ The real systems are confidential, so the domain is recreated here with neutral 
 
 | | |
 |---|---|
-| **Tests** | 48 (42 API, 6 UI) - 10 smoke, 23 negative |
+| **Tests** | 52 (45 API, 7 UI) - 10 smoke, 23 negative |
 | **Stack** | Python, pytest, Playwright, FastAPI, GitHub Actions |
 | **Runs in** | ~5 s locally, ~40 s in CI |
 | **AI** | 4 Claude Code agents for test design, code review, bug reports and CI triage - [real example runs](docs/agent-examples/README.md) |
@@ -66,8 +66,8 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Tests
-        API[tests/api<br/>42 pytest tests]
-        UI[tests/ui<br/>6 Playwright tests]
+        API[tests/api<br/>45 pytest tests]
+        UI[tests/ui<br/>7 Playwright tests]
     end
     subgraph Framework
         C[WmsClient<br/>one method per endpoint]
@@ -100,8 +100,8 @@ UI tests prove only what the user sees: messages, buttons and screen updates.
 
 | Layer | Tests | What it proves |
 |---|---|---|
-| API | 42 | Business rules, validations, status transitions, stock and audit side effects |
-| UI | 6 | The main flows work for a user: scan a pallet, release an order, complete a task |
+| API | 45 | Business rules, validations, status transitions, stock and audit side effects |
+| UI | 7 | The main flows work for a user: scan a pallet, release an order, complete a task |
 
 **What is covered, by module**
 
@@ -195,7 +195,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 python -m playwright install chromium
 
-python -m pytest                  # all 48 tests
+python -m pytest                  # all 52 tests
 python -m pytest -m smoke         # quick check
 python -m pytest tests/api        # API tests only
 ```
@@ -206,7 +206,10 @@ python -m pytest tests/api        # API tests only
 uvicorn wms_app.main:app --reload
 ```
 
+Click **Load demo data** (top right of the screen) to fill the warehouse with pallets, orders and a pick task.
 Example host messages to send are in [`samples/`](samples).
+
+**Watch the UI tests click through the browser:** `python -m pytest tests/ui --headed --slowmo 700`
 
 **VS Code:** the project includes a [`.vscode`](.vscode) setup. Tests appear in the Testing panel,
 and *Run and Debug* has **Start Mini WMS** and **Debug current test file**.
@@ -227,8 +230,8 @@ framework/
   pages/wms_page.py       page object
 tests/
   conftest.py             shared fixtures
-  api/                    42 API tests
-  ui/                     6 Playwright tests + UI fixtures
+  api/                    45 API tests
+  ui/                     7 Playwright tests + UI fixtures
 samples/                  example host messages
 tools/junit_summary.py    CI run summary
 .github/workflows/        CI pipeline

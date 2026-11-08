@@ -478,3 +478,48 @@ def reset():
     for store in (products, asns, transport_units, inventory_transactions,
                   orders, tasks, transport_orders):
         store.clear()
+
+
+# ---------------------------------------------------------------------------
+# Demo data - a realistic warehouse in one click, for showing the screen
+# ---------------------------------------------------------------------------
+@app.post("/api/test/demo-data")
+def load_demo_data():
+    """
+    Empties the warehouse, then builds a small but realistic state:
+      - 3 products
+      - PAL-0001, PAL-0002 received OK into storage
+      - PAL-0003 overweight at the infeed -> NiO, blocked
+      - PAL-0004 announced by ASN, not arrived yet (scan it live on Receiving)
+      - ORD-1001 released -> one open PICK task
+      - ORD-1002 NEW, can be released
+      - ORD-1003 NEW, release will be refused (its only stock is blocked in NiO)
+    """
+    reset()
+    for product_id, description in [("SKU-100", "Mineral water 6x1.5L"),
+                                    ("SKU-200", "Apple juice 12x1L"),
+                                    ("SKU-300", "Coffee beans 1kg")]:
+        product_create(ProductCreate(productId=product_id, owner="DEMO", description=description))
+
+    def announce(tu_id, tu_type, weight, product_id, qty):
+        asn_create(AsnCreate(owner="DEMO",
+                             transportUnit=AsnTransportUnit(tuId=tu_id, tuType=tu_type, weight=weight),
+                             asnLine=[AsnLine(lineNumber=1, productId=product_id, quantityExpected=qty)]))
+
+    announce("PAL-0001", "EURO", 420.0, "SKU-100", 60)
+    announce("PAL-0002", "EURO", 380.0, "SKU-200", 48)
+    announce("PAL-0003", "INDU", 500.0, "SKU-300", 40)
+    announce("PAL-0004", "EURO", 400.0, "SKU-100", 60)
+    infeed_scan(InfeedScan(tuId="PAL-0001", tuType="EURO", weight=422.5))
+    infeed_scan(InfeedScan(tuId="PAL-0002", tuType="EURO", weight=377.0))
+    infeed_scan(InfeedScan(tuId="PAL-0003", tuType="INDU", weight=560.0))  # +12 % -> NiO
+
+    def order(order_id, product_id, qty, release):
+        return Order(orderId=order_id, owner="DEMO", priority=5, orderRelease=release,
+                     orderLine=[OrderLine(orderLineNumber=1, productId=product_id, quantityOrdered=qty)])
+
+    order_batch_create(OrderBatch(order=[order("ORD-1001", "SKU-100", 24, True),
+                                         order("ORD-1002", "SKU-200", 12, False),
+                                         order("ORD-1003", "SKU-300", 30, False)]))
+    return {"status": "LOADED", "products": len(products), "transportUnits": len(transport_units),
+            "orders": len(orders), "openTasks": sum(t["status"] == "OPEN" for t in tasks.values())}

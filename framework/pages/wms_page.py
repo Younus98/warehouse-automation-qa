@@ -24,6 +24,9 @@ class WmsPage:
         """tab: inventory | receiving | orders | tasks"""
         self.page.get_by_test_id(f"tab-{tab}").click()
 
+    def load_demo_data(self):
+        self.page.get_by_test_id("load-demo-data").click()
+
     # --- Receiving ---
     def scan_pallet(self, tu_id: str, tu_type: str, weight: float):
         self.go_to("receiving")

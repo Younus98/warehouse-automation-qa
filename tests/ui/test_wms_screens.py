@@ -72,3 +72,13 @@ def test_complete_pick_task_removes_it_and_reduces_stock(wms, stocked_pallet, pr
     wms_page.expect_stock(product, on_hand=36, allocated=0, available=36)
     wms_page.go_to("orders")
     expect(wms_page.order_row("ORD-1").get_by_test_id("order-status")).to_have_text("PICKED")
+
+
+def test_load_demo_data_button_fills_the_screen(wms, wms_page):
+    wms_page.open()
+
+    wms_page.load_demo_data()
+
+    expect(wms_page.message).to_have_text("Demo data loaded: 3 products, 3 pallets, 3 orders, 1 open task")
+    wms_page.expect_stock("SKU-100", on_hand=60, allocated=24, available=36)
+    expect(wms_page.tu_row("PAL-0003").get_by_test_id("tu-status")).to_have_text("BLOCKED")

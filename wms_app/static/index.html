@@ -29,6 +29,8 @@
   #message.error { display:block; background:#fdecea; color:var(--bad); }
   .status { font-weight:600; }
   .hidden { display:none; }
+  header .demo { margin-left:auto; background:#2c3a4f; color:#fff; border:1px solid #44546b; border-radius:4px; padding:6px 12px; font:inherit; cursor:pointer; }
+  header .demo:hover { background:#3a4b64; }
 </style>
 </head>
 <body>
@@ -40,6 +42,7 @@
     <button data-tab="orders" data-testid="tab-orders">Orders</button>
     <button data-tab="tasks" data-testid="tab-tasks">Tasks</button>
   </nav>
+  <button class="demo" data-testid="load-demo-data" onclick="loadDemoData()">Load demo data</button>
 </header>
 
 <main>
@@ -135,7 +138,7 @@ async function refresh() {
   fillTable("stock-table", stock.map(s =>
     `<tr data-testid="stock-row-${s.productId}"><td>${s.productId}</td>
       <td data-testid="on-hand">${s.onHand}</td><td data-testid="allocated">${s.allocated}</td>
-      <td data-testid="available">${s.available}</td></tr>`), "No products");
+      <td data-testid="available">${s.available}</td></tr>`), "No products yet - click Load demo data (top right)");
 
   fillTable("tu-table", tus.map(t =>
     `<tr data-testid="tu-row-${t.tuId}"><td>${t.tuId}</td><td>${t.tuType}</td>
@@ -191,6 +194,14 @@ document.querySelectorAll("nav button").forEach(button => button.addEventListene
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("hidden", t.id !== button.dataset.tab));
   refresh();
 }));
+
+async function loadDemoData() {
+  try {
+    const r = await call("POST", "/api/test/demo-data");
+    showMessage(`Demo data loaded: ${r.products} products, ${r.transportUnits} pallets, ${r.orders} orders, ${r.openTasks} open task`, "ok");
+  } catch (err) { showMessage(err.message, "error"); }
+  refresh();
+}
 
 refresh();
 </script>
