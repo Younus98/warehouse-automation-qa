@@ -1,0 +1,12 @@
+{
+  // Show the tests in the Testing panel (flask icon on the left) and run them with pytest
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  // Hide generated folders from the file list
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  }
+}

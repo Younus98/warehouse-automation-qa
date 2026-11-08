@@ -1,0 +1,22 @@
+{
+  // Run and Debug panel (play icon with a bug on the left), or press F5
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Start Mini WMS",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["wms_app.main:app", "--reload"],
+      "jinja": true
+    },
+    {
+      "name": "Debug current test file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-v"],
+      "justMyCode": true
+    }
+  ]
+}
