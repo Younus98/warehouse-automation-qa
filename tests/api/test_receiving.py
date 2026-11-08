@@ -75,6 +75,7 @@ def test_wrong_tu_type_goes_to_nio(wms, product):
     (398.9, "NIO"),   # just under the lower edge
     (441.0, "OK"),    # +5.0 %  upper edge, still OK
     (441.1, "NIO"),   # just over the upper edge
+    (420.0, "OK"),    # exactly the ASN weight
 ])
 def test_weight_tolerance_boundaries(wms, product, scale_weight, expected):
     wms.create_asn(builders.asn("PAL-0001", weight=420.0))
