@@ -141,7 +141,7 @@ class OrderBatch(BaseModel):
 def order_batch_create(batch: OrderBatch):
     """Each order in the batch is checked on its own; one bad order doesn't block the rest."""
     results = []
-    for o in batch.order:
+    for o in sorted(batch.order, key=lambda o: o.priority):
         if o.orderId in orders:
             results.append({"orderId": o.orderId, "status": "REJECTED", "message": "Duplicate orderId"})
             continue
@@ -176,7 +176,8 @@ class OrderUpdateBatch(BaseModel):
 def order_batch_update(batch: OrderUpdateBatch):
     """Change priority and/or release orders - the host's way of driving the Order Planner."""
     results = []
-    for u in batch.order:
+    for u in sorted(batch.order, key=lambda u: u.priority if u.priority is not None
+                    else orders.get(u.orderId, {}).get("priority", 9)):
         if u.orderId not in orders:
             results.append({"orderId": u.orderId, "status": "REJECTED", "message": "Order not found"})
             continue

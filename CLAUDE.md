@@ -30,6 +30,7 @@ Claude Code reads this file at the start of every session; the agents in
 - **Stock** - `onHand` (available TUs only), `allocated` (open PICK tasks), `available` = onHand - allocated.
 - **Order** - arrives in a batch; each order is accepted or rejected on its own. Status `NEW -> RELEASED -> PICKED`.
 - **Order Planner / release** - checks stock for every line first, then creates one PICK task per pallet used.
+  In a batch, orders are released in priority order (1 = highest); equal priorities keep their list position (FIFO).
   `shortAllocationAllowed` decides between refusing and allocating what is available.
 - **Task** - `PICK` (reduces stock, books a PICK transaction) or `MOVE` (changes TU location).
 - **Transport order** - moves a TU; refused if the TU is not at the source, source = destination, or the TU has an open task.
