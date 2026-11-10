@@ -12,7 +12,7 @@ The real systems are confidential, so the domain is recreated here with neutral 
 
 | | |
 |---|---|
-| **Tests** | 52 (45 API, 7 UI) - 10 smoke, 23 negative |
+| **Tests** | 57 (50 API, 7 UI) - 11 smoke, 24 negative |
 | **Stack** | Python, pytest, Playwright, FastAPI, GitHub Actions |
 | **Runs in** | ~5 s locally, ~40 s in CI |
 | **AI** | 4 Claude Code agents for test design, code review, bug reports and CI triage - [real example runs](docs/agent-examples/README.md) |
@@ -43,7 +43,7 @@ flowchart LR
     INF -->|OK| ST[STORAGE-01<br/>stock booked]
     INF -->|NOK| NIO[NIO-01<br/>pallet blocked]
     ERP -->|Order batch| ORD[Order NEW]
-    ORD -->|release| OP{Order planner<br/>enough stock?}
+    ORD -->|release| OP{Order planner<br/>by priority,<br/>enough stock?}
     OP -->|yes / short allowed| PICK[PICK tasks]
     OP -->|no| REJ[Release refused]
     PICK -->|complete| DONE[Stock reduced<br/>order PICKED]
@@ -58,7 +58,7 @@ flowchart LR
 | **Infeed check** | On arrival the TU type must match the ASN and the weight must be within ±5 % |
 | **NiO** (nicht in Ordnung) | Reject location: the pallet is blocked and its stock does not count |
 | **Stock** | `onHand` (available pallets), `allocated` (reserved by open picks), `available` = onHand - allocated |
-| **Order planner** | Releases an order: checks stock for every line, then creates one PICK task per pallet used |
+| **Order planner** | Releases an order: checks stock for every line, then creates one PICK task per pallet used. In a batch, priority 1 orders are released first; equal priorities keep their order (FIFO) |
 | **Inventory transaction** | Audit trail of every stock change (`RECEIPT` +, `PICK` -) with its reference |
 
 ## Architecture
@@ -66,7 +66,7 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Tests
-        API[tests/api<br/>45 pytest tests]
+        API[tests/api<br/>50 pytest tests]
         UI[tests/ui<br/>7 Playwright tests]
     end
     subgraph Framework
@@ -100,7 +100,7 @@ UI tests prove only what the user sees: messages, buttons and screen updates.
 
 | Layer | Tests | What it proves |
 |---|---|---|
-| API | 45 | Business rules, validations, status transitions, stock and audit side effects |
+| API | 50 | Business rules, validations, status transitions, stock and audit side effects |
 | UI | 7 | The main flows work for a user: scan a pallet, release an order, complete a task |
 
 **What is covered, by module**
@@ -110,7 +110,9 @@ UI tests prove only what the user sees: messages, buttons and screen updates.
 | Master data | 7 | Duplicate product, field length boundaries |
 | Receiving | 17 | ASN validation, infeed OK / NiO, ±5 % weight boundaries, receiving twice |
 | Orders | 10 | Batch with one bad order, release, insufficient stock, short allocation, stock reserved by another order |
+| Order priority | 5 | Priority 1 wins limited stock over priority 5, in batch create and batch update; FIFO for equal priority |
 | Tasks and transport | 8 | Pick reduces stock, task completed twice, moving a pallet with an open task |
+| Demo data | 3 | The demo warehouse used to show the screen stays correct |
 
 **Test design techniques**
 
@@ -161,7 +163,7 @@ flowchart LR
     D -->|UI failure| F[Screenshots +<br/>Playwright traces]
 ```
 
-- **Two quality gates:** if the 10 smoke tests fail, the run stops early.
+- **Two quality gates:** if the 11 smoke tests fail, the run stops early.
 - **Results for everyone:** a summary table on the run page (no need to open anything), an HTML report to
   download, and JUnit XML that Jenkins, Azure DevOps or Xray can read.
 - **Evidence for failed UI tests:** screenshots and Playwright traces you can replay step by step.
@@ -183,6 +185,12 @@ Four [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) agents 
 In one run the CI analyzer found that the smoke gate was hiding a critical product bug behind a test bug,
 and that the pipeline lost its report when the smoke gate failed. The pipeline was fixed as a result.
 
+**How a feature is built with the agents** - order priority went through the full loop:
+`test-case-designer` turned the requirement into 18 test cases and found that priority was stored but never used;
+the open questions (tie-breaking, short allocation) were answered as product decisions and written into `CLAUDE.md`;
+the tests were written first and failed, then the rule was implemented;
+`test-code-reviewer` found two untested parts of the rule (batch update, FIFO), and two tests were added before merge.
+
 ## Run it locally
 
 Requires **Python 3.10+**.
@@ -195,7 +203,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 python -m playwright install chromium
 
-python -m pytest                  # all 52 tests
+python -m pytest                  # all 57 tests
 python -m pytest -m smoke         # quick check
 python -m pytest tests/api        # API tests only
 ```
@@ -230,7 +238,7 @@ framework/
   pages/wms_page.py       page object
 tests/
   conftest.py             shared fixtures
-  api/                    45 API tests
+  api/                    50 API tests
   ui/                     7 Playwright tests + UI fixtures
 samples/                  example host messages
 tools/junit_summary.py    CI run summary
@@ -247,4 +255,5 @@ Found by the `test-case-designer` agent and planned next:
 - **Max pallet weight (1,000 kg)** - reject heavy pallets at the ASN and the infeed
   ([31 test cases designed](docs/agent-examples/01-test-case-designer.md)).
 - **Blocked pallets can be moved out of NiO** - a transport order does not check the pallet status today.
-- **Order priority in the order planner** - release priority 1 before priority 5.
+
+Done: **Order priority in the order planner** - priority 1 is released before priority 5 (5 tests).
